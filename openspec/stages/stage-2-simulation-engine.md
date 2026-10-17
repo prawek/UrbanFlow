@@ -6,24 +6,23 @@
 
 ```mermaid
 flowchart LR
-    intersection["Intersection"] --- incoming["incoming RoadSegment"] & outgoing["outgoing RoadSegment"]
-    incoming --- left["movement LEFT"] & through["movement THROUGH"] & right["movement RIGHT"]
-    left --> controller["SignalController"]
-    through --> controller
-    right --> controller
+    intersection["Intersection"] --> incoming["incoming RoadSegment"] & outgoing["outgoing"] & controller["SignalController"]
+
+    outgoing --> left["left Intersection"] & through["through Intersection"] & right["right Intersection"]
 
      intersection:::intersection
      incoming:::roadSegment
-     outgoing:::roadSegment
-     left:::movement
-     through:::movement
-     right:::movement
+     outgoing:::movement
+     left:::intersection
+     through:::intersection
+     right:::intersection
      controller:::controller
     classDef intersection stroke:#818cf8,fill:#eef2ff
     classDef roadSegment stroke:#2dd4bf,fill:#f0fdfa
     classDef movement stroke:#a78bfa,fill:#f5f3ff
     classDef controller stroke:#fb923c,fill:#fff7ed
 ```
+
 
 Для каждого направленного участка $e$:
 
