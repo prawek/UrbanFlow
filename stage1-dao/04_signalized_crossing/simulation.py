@@ -54,7 +54,8 @@ class Participant:
         return distance / self.speed
 
     def approach_crossing(self, distance: float):
-        yield self.env.timeout(self.duration(distance))
+        if distance > 0:
+            yield self.env.timeout(self.duration(distance))
         self.queue_entered_at = float(self.env.now)
         print(f"time={self.env.now:.3f}, id={self.id}, kind={self.kind.value}, queued")
         yield self.queue.put(self)
@@ -74,13 +75,17 @@ class Car(Participant):
     def serve_crossing(self, light_phase_controller, crossing_length):
         while True:
             car = yield self.queue.get()
-            while light_phase_controller.phase is not LightPhase.VEHICLES:
+            crossing_duration = car.duration(crossing_length)
+            while (
+                light_phase_controller.phase is not LightPhase.VEHICLES
+                or self.env.now + crossing_duration > light_phase_controller.phase_ends_at
+            ):
                 yield light_phase_controller.phase_changed_event
 
             car.crossing_started_at = float(self.env.now)
             print(f"time={self.env.now:.3f}, id={car.id}, kind={car.kind.value}, crossing_started")
 
-            yield self.env.timeout(car.duration(crossing_length))
+            yield self.env.timeout(crossing_duration)
             car.route_finished_event.succeed()
 
 
@@ -175,13 +180,10 @@ class SignalizedCrossingSimulation:
         seed: int = 42,
         horizon_ms: float = 600,
         intersection_approach_length: float = 150,
-        pedestrian_approach_length: float = 28,
         car_crossing_length: float = 30,
         pedestrian_crossing_length: float = 7,
         car_arrivals: Iterable[float] | None = None,
         pedestrian_arrivals: Iterable[float] | None = None,
-        is_car_at_stop_line: bool = False,
-        is_pedestrian_at_crossing: bool = False,
     ) -> None:
         self.env = env
         self.journal = Journal()
@@ -191,15 +193,12 @@ class SignalizedCrossingSimulation:
             raise ValueError("Горизонт генерации должен быть положительным")
         if intersection_approach_length <= 0:
             raise ValueError("Длина подъезда к перекрёстку должна быть положительной")
-        if pedestrian_approach_length <= 0:
-            raise ValueError("Длина подхода пешехода должна быть положительной")
         if car_crossing_length <= 0:
             raise ValueError("Длина проезда автомобиля должна быть положительной")
         if pedestrian_crossing_length <= 0:
             raise ValueError("Длина пешеходного перехода должна быть положительной")
         self.horizon_ms = horizon_ms
         self.car_intersection_approach_length = intersection_approach_length
-        self.pedestrian_approach_length = pedestrian_approach_length
         self.car_crossing_length = car_crossing_length
         self.pedestrian_crossing_length = pedestrian_crossing_length
         self.car_arrivals = None if car_arrivals is None else tuple(car_arrivals)
@@ -207,8 +206,6 @@ class SignalizedCrossingSimulation:
         for arrivals in (self.car_arrivals, self.pedestrian_arrivals):
             if arrivals is not None and any(time < 0 for time in arrivals):
                 raise ValueError("Время появления не может быть отрицательным")
-        self.is_car_at_stop_line = is_car_at_stop_line
-        self.is_pedestrian_at_crossing = is_pedestrian_at_crossing
 
     def now(self) -> float:
         return float(self.env.now)
@@ -228,7 +225,7 @@ class SignalizedCrossingSimulation:
                 crossing_length = self.car_crossing_length
             else:
                 participant = Pedestrian(self.env, pedestrian_queue, participant_id, self.now())
-                distance = self.pedestrian_approach_length
+                distance = 0
                 crossing_length = self.pedestrian_crossing_length
 
             self.journal.participants.append(participant)
@@ -264,8 +261,6 @@ def main() -> None:
     result = SignalizedCrossingSimulation(
         car_arrivals=[0, 0, 0],
         pedestrian_arrivals=[1, 1],
-        is_car_at_stop_line=True,
-        is_pedestrian_at_crossing=True,
         env=simpy.Environment()
     ).run()
     for participant in result.participants:

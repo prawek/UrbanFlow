@@ -123,7 +123,7 @@ class CoordinatedCorridorTests(unittest.TestCase):
         )
 
     def test_random_run_conserves_vehicles_and_capacity(self):
-        _, result = run_simulation(seed=7)
+        simulation, result = run_simulation(seed=7)
         created = [user for user in result.participants if user.kind is Kind.CAR]
         self.assertTrue(created)
         self.assertTrue(
@@ -132,15 +132,19 @@ class CoordinatedCorridorTests(unittest.TestCase):
         self.assertEqual(
             sum(result.completed_by_direction().values()), len(created)
         )
-        for snapshot in result.monitoring:
-            for direction_snapshot, capacity_count in (
-                (snapshot.straight, 5),
-                (snapshot.left, 3),
-                (snapshot.right, 2),
-            ):
-                self.assertLessEqual(
-                    direction_snapshot.receiver_used_count, capacity_count
+        for direction, capacity_count in (
+            (Direction.STRAIGHT, 5),
+            (Direction.LEFT, 3),
+            (Direction.RIGHT, 2),
+        ):
+            direction_cars = [car for car in created if car.direction is direction]
+            for car in direction_cars:
+                used_count = sum(
+                    other.central_started_at <= car.central_started_at < other.finished_at
+                    for other in direction_cars
                 )
+                self.assertLessEqual(used_count, capacity_count)
+        self.assertEqual(simulation.free_places_at_end_count, {"straight": 5, "left": 3, "right": 2})
 
     def test_direction_frequencies(self):
         _, result = run_simulation(

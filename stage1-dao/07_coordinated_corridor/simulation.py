@@ -108,13 +108,12 @@ class Participant:
     def duration(self, distance: float) -> float:
         return distance / self.speed
 
-    def run(self, distance: float | None, monitor: Callable[[], None]):
+    def run(self, distance: float | None):
         if distance is not None:
             yield from self.approach_crossing(distance)
         yield self.route_finished_event
         self.finished_at = float(self.env.now)
         print(f"time={self.env.now:.3f}, id={self.id}, kind={self.kind.value}, finished")
-        monitor()
 
 
 class Car(Participant):
@@ -122,7 +121,7 @@ class Car(Participant):
         super().__init__(env, queue, id, Kind.CAR, appeared_at, direction, is_initial)
         self.speed = 15
 
-    def serve_crossing(self, light_phase_controller, crossing_length, free_places, holders, capacity_changed_events, travel_to_receiver, monitor):
+    def serve_crossing(self, light_phase_controller, crossing_length, free_places, capacity_changed_events, travel_to_receiver):
         direction = self.direction
         while True:
             participant = yield self.queue.get()
@@ -136,8 +135,6 @@ class Car(Participant):
                     participant.capacity_blocked_time += float(self.env.now) - wait_started
                     continue
                 yield free_places[direction].get(1)
-                holders[direction][participant.id] = "reserved"
-                monitor()
                 break
             participant.central_started_at = float(self.env.now)
             print(f"time={self.env.now:.3f}, id={participant.id}, kind={participant.kind.value}, direction={direction.value}, central_started")
@@ -146,7 +143,7 @@ class Car(Participant):
             print(f"time={self.env.now:.3f}, id={participant.id}, kind={participant.kind.value}, direction={direction.value}, central_finished")
             self.env.process(travel_to_receiver(participant))
 
-    def serve_receiver(self, queue, light_phase_controller, crossing_length, release_blocked_until, free_places, holders, notify_capacity):
+    def serve_receiver(self, queue, light_phase_controller, crossing_length, release_blocked_until, free_places, notify_capacity):
         direction = self.direction
         while True:
             participant = yield queue.get()
@@ -162,7 +159,6 @@ class Car(Participant):
             participant.receiver_started_at = float(self.env.now)
             print(f"time={self.env.now:.3f}, id={participant.id}, kind={participant.kind.value}, direction={direction.value}, receiver_started")
             yield self.env.timeout(participant.duration(crossing_length))
-            holders[direction].pop(participant.id)
             yield free_places[direction].put(1)
             notify_capacity(direction)
             participant.route_finished_event.succeed()
@@ -173,7 +169,7 @@ class Pedestrian(Participant):
         super().__init__(env, queue, id, Kind.PEDESTRIAN, appeared_at)
         self.speed = 1.4
 
-    def serve_crossing(self, light_phase_controller, crossing_length, monitor):
+    def serve_crossing(self, light_phase_controller, crossing_length):
         while True:
             phase = yield light_phase_controller.phase_changed_event
             if phase is not LightPhase.PEDESTRIANS:
@@ -187,38 +183,15 @@ class Pedestrian(Participant):
             for pedestrian in group:
                 pedestrian.central_started_at = float(self.env.now)
                 print(f"time={self.env.now:.3f}, id={pedestrian.id}, kind={pedestrian.kind.value}, central_started")
-            monitor()
             yield self.env.timeout(group[0].duration(crossing_length))
             for pedestrian in group:
                 pedestrian.central_finished_at = float(self.env.now)
                 pedestrian.route_finished_event.succeed()
 
 
-@dataclass(frozen=True)
-class DirectionMonitoringSnapshot:
-    central_queue_len: int
-    receiver_queue_len: int
-    receiver_reserved_count: int
-    receiver_occupied_count: int
-
-    @property
-    def receiver_used_count(self) -> int:
-        return self.receiver_reserved_count + self.receiver_occupied_count
-
-
-@dataclass(frozen=True)
-class MonitoringSnapshot:
-    time: float
-    pedestrian_queue_len: int
-    straight: DirectionMonitoringSnapshot
-    left: DirectionMonitoringSnapshot
-    right: DirectionMonitoringSnapshot
-
-
 @dataclass
 class Journal:
     participants: list[Participant] = field(default_factory=list)
-    monitoring: list[MonitoringSnapshot] = field(default_factory=list)
     finished_at: float = 0.0
 
     def count(self, kind: Kind) -> int:
@@ -370,7 +343,6 @@ class CoordinatedCorridorSimulation:
             direction: simpy.Container(self.env, capacity=capacity_count, init=capacity_count)
             for direction, capacity_count in CAPACITIES.items()
         }
-        holders: dict[Direction, dict[str, str]] = {direction: {} for direction in DIRECTIONS}
         capacity_changed_events = {direction: self.env.event() for direction in DIRECTIONS}
         central_signal = PhaseController(
             self.env,
@@ -384,27 +356,6 @@ class CoordinatedCorridorSimulation:
         }
         participant_processes: list[simpy.Process] = []
         route_rng = random.Random(self.seed + 2)
-
-        def monitor() -> None:
-            def direction_snapshot(direction: Direction) -> DirectionMonitoringSnapshot:
-                return DirectionMonitoringSnapshot(
-                    central_queue_len=len(central_queues[direction].items),
-                    receiver_queue_len=len(receiver_queues[direction].items),
-                    receiver_reserved_count=sum(state == "reserved" for state in holders[direction].values()),
-                    receiver_occupied_count=sum(state == "occupied" for state in holders[direction].values()),
-                )
-
-            snapshot = MonitoringSnapshot(
-                time=self.now(),
-                pedestrian_queue_len=len(pedestrian_queue.items),
-                straight=direction_snapshot(Direction.STRAIGHT),
-                left=direction_snapshot(Direction.LEFT),
-                right=direction_snapshot(Direction.RIGHT),
-            )
-            if self.journal.monitoring and self.journal.monitoring[-1].time == self.env.now:
-                self.journal.monitoring[-1] = snapshot
-            else:
-                self.journal.monitoring.append(snapshot)
 
         def notify_capacity(direction: Direction) -> None:
             previous_event = capacity_changed_events[direction]
@@ -427,8 +378,8 @@ class CoordinatedCorridorSimulation:
             if direction in car_services_started:
                 return
             car_services_started.add(direction)
-            self.env.process(car.serve_crossing(central_signal, self.central_crossing_length, free_places, holders, capacity_changed_events, travel_to_receiver, monitor))
-            self.env.process(car.serve_receiver(receiver_queues[direction], receiver_signals[direction], self.receiver_crossing_length, self.left_release_blocked_until, free_places, holders, notify_capacity))
+            self.env.process(car.serve_crossing(central_signal, self.central_crossing_length, free_places, capacity_changed_events, travel_to_receiver))
+            self.env.process(car.serve_receiver(receiver_queues[direction], receiver_signals[direction], self.receiver_crossing_length, self.left_release_blocked_until, free_places, notify_capacity))
 
         def spawn_car(direction: Direction | None = None) -> None:
             participant_id = self.journal.count(Kind.CAR) + 1
@@ -438,40 +389,35 @@ class CoordinatedCorridorSimulation:
             start_car_services(participant)
             print(f"time={self.now():.3f}, id={participant.id}, kind={participant.kind.value}, direction={selected_direction.value}, appeared")
             distance = 0 if self.is_car_at_stop_line else self.car_intersection_approach_length
-            participant_processes.append(self.env.process(participant.run(distance, monitor)))
+            participant_processes.append(self.env.process(participant.run(distance)))
 
         def spawn_pedestrian() -> None:
             participant_id = self.journal.count(Kind.PEDESTRIAN) + 1
             participant = Pedestrian(self.env, pedestrian_queue, participant_id, self.now())
             if participant_id == 1:
-                self.env.process(participant.serve_crossing(central_signal, self.pedestrian_crossing_length, monitor))
+                self.env.process(participant.serve_crossing(central_signal, self.pedestrian_crossing_length))
             self.journal.participants.append(participant)
             print(f"time={self.now():.3f}, id={participant.id}, kind={participant.kind.value}, appeared")
             distance = 0 if self.is_pedestrian_at_crossing else self.pedestrian_approach_length
-            participant_processes.append(self.env.process(participant.run(distance, monitor)))
+            participant_processes.append(self.env.process(participant.run(distance)))
 
         def prefill_left_approach():
             for number in range(1, self.prefilled_left_count + 1):
                 yield free_places[Direction.LEFT].get(1)
                 participant = Car(self.env, central_queues[Direction.LEFT], f"initial-left-{number:03d}", 0.0, Direction.LEFT, True)
                 start_car_services(participant)
-                participant_processes.append(self.env.process(participant.run(None, monitor)))
+                participant_processes.append(self.env.process(participant.run(None)))
                 participant.receiver_arrived_at = 0.0
                 self.journal.participants.append(participant)
-                holders[Direction.LEFT][participant.id] = "occupied"
                 yield receiver_queues[Direction.LEFT].put(participant)
                 print(f"time={self.now():.3f}, id={participant.id}, kind={participant.kind.value}, direction={participant.direction.value}, receiver_prefilled")
-                monitor()
 
         def travel_to_receiver(participant: Participant):
             direction = participant.direction
-            holders[direction][participant.id] = "occupied"
-            monitor()
             yield from participant.travel(self.receiver_approach_length)
             participant.receiver_arrived_at = self.now()
             print(f"time={self.now():.3f}, id={participant.id}, kind={participant.kind.value}, direction={direction.value}, receiver_queued")
             yield receiver_queues[direction].put(participant)
-            monitor()
 
         sources = [self.env.process(prefill_left_approach())]
         if self.car_arrivals is None:
@@ -486,12 +432,10 @@ class CoordinatedCorridorSimulation:
         self.env.process(central_signal.run())
         for controller in receiver_signals.values():
             self.env.process(controller.run())
-        monitor()
         self.env.run(until=simpy.AllOf(self.env, sources))
         self.env.run(until=simpy.AllOf(self.env, participant_processes))
         self.free_places_at_end_count = {direction.value: container.level for direction, container in free_places.items()}
         self.journal.finished_at = self.now()
-        monitor()
         return self.journal
 
 
