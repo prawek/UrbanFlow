@@ -4,6 +4,7 @@ import simpy
 
 
 def traffic_light(
+    light_name,
     env: simpy.Environment,
     green_duration: float,
     yellow_duration: float,
@@ -11,14 +12,17 @@ def traffic_light(
 ):
     """Бесконечно повторяет цикл сигналов и печатает каждое переключение."""
     while True:
-        for color, duration in (
-            ("green", green_duration),
-            ("yellow", yellow_duration),
-            ("red", red_duration),
-        ):
-            print(f"time={env.now:g}, color={color}")
-            yield env.timeout(duration)
+        color = "green"
+        print(f"{light_name}, time={env.now:g}, color={color}")
+        yield env.timeout(green_duration)
 
+        color = "yellow"
+        print(f"{light_name}, time={env.now:g}, color={color}")
+        yield env.timeout(yellow_duration)
+
+        color = "red"
+        print(f"{light_name}, time={env.now:g}, color={color}")
+        yield env.timeout(red_duration)
 
 class TrafficLightSimulation:
     def __init__(
@@ -33,12 +37,13 @@ class TrafficLightSimulation:
         self.yellow_duration = yellow_duration
         self.red_duration = red_duration
 
-    def run(self, until: float = 180) -> None:
+    def run(self, until: float = 360) -> None:
         if until <= 0:
             raise ValueError("Время моделирования должно быть положительным")
         env = simpy.Environment()
         env.process(
             traffic_light(
+                "light1",
                 env,
                 self.green_duration,
                 self.yellow_duration,
