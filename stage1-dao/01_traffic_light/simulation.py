@@ -37,7 +37,7 @@ class TrafficLightSimulation:
         self.yellow_duration = yellow_duration
         self.red_duration = red_duration
 
-    def run(self, until: float = 360) -> None:
+    def run(self, until: float = 180) -> None:
         if until <= 0:
             raise ValueError("Время моделирования должно быть положительным")
         env = simpy.Environment()

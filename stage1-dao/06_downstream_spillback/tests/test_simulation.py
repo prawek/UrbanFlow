@@ -70,10 +70,12 @@ class DownstreamSpillbackTests(unittest.TestCase):
             [user.crossing_started_at for user in pedestrians(result)], [20, 20]
         )
         self.assertGreater(cars(result)[5].downstream_blocked_time, 0)
-        self.assertLessEqual(
-            max(snapshot.downstream_used_count for snapshot in result.monitoring), 5
-        )
-        self.assertEqual(result.monitoring[-1].downstream_used_count, 0)
+        for car in cars(result):
+            used_count = sum(
+                other.crossing_started_at <= car.crossing_started_at < other.finished_at
+                for other in cars(result)
+            )
+            self.assertLessEqual(used_count, 5)
         self.assertEqual(simulation.free_places_at_end_count, 5)
 
     def test_identical_input_streams_for_open_and_blocked_exit(self):

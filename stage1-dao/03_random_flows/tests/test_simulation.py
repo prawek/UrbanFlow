@@ -42,13 +42,22 @@ class RandomFlowTests(unittest.TestCase):
             expected_speed, distance = (
                 (15, 150)
                 if traveler.kind == "car"
-                else (1.4, 28)
+                else (1.4, 0)
             )
             self.assertEqual(traveler.speed, expected_speed)
             self.assertAlmostEqual(
                 traveler.arrived_at - traveler.appeared_at,
                 distance / traveler.speed,
             )
+
+    def test_pedestrians_arrive_immediately_without_extending_simulation(self):
+        with redirect_stdout(io.StringIO()):
+            result = RandomFlowSimulation(seed=42, horizon_ms=5).run()
+        self.assertTrue(result.travelers)
+        self.assertTrue(all(p.kind == "pedestrian" for p in result.travelers))
+        for pedestrian in result.travelers:
+            self.assertEqual(pedestrian.arrived_at, pedestrian.appeared_at)
+        self.assertEqual(result.finished_at, 5)
 
 
 if __name__ == "__main__":
