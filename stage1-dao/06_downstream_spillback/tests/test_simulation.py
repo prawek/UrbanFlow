@@ -26,6 +26,13 @@ def run_simulation(**kwargs):
 
 
 class DownstreamSpillbackTests(unittest.TestCase):
+    def test_pedestrians_appear_at_crossing_and_keep_phase_boundary_rule(self):
+        _, result = run_simulation(car_arrivals=[], pedestrian_arrivals=[1, 20])
+        group = pedestrians(result)
+        self.assertEqual([p.queue_entered_at for p in group], [1, 20])
+        self.assertEqual([p.crossing_started_at for p in group], [20, 50])
+        self.assertEqual([p.crossing_finished_at for p in group], [25, 55])
+
     def test_waits_for_later_arrivals_after_queue_drains(self):
         _, result = run_simulation(car_arrivals=[0, 120], pedestrian_arrivals=[])
         self.assertEqual([car.finished_at for car in cars(result)], [22, 142])

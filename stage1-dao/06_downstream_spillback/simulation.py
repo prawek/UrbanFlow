@@ -220,7 +220,6 @@ class DownstreamSpillbackSimulation:
         seed: int = 42,
         horizon_ms: float = 600,
         intersection_approach_length: float = 150,
-        pedestrian_approach_length: float = 28,
         car_crossing_length: float = 30,
         pedestrian_crossing_length: float = 7,
         downstream_length: float = 150,
@@ -233,7 +232,6 @@ class DownstreamSpillbackSimulation:
     ) -> None:
         lengths = (
             intersection_approach_length,
-            pedestrian_approach_length,
             car_crossing_length,
             pedestrian_crossing_length,
             downstream_length,
@@ -247,7 +245,6 @@ class DownstreamSpillbackSimulation:
         self.seed = seed
         self.horizon_ms = horizon_ms
         self.car_intersection_approach_length = intersection_approach_length
-        self.pedestrian_approach_length = pedestrian_approach_length
         self.car_crossing_length = car_crossing_length
         self.pedestrian_crossing_length = pedestrian_crossing_length
         self.downstream_length = downstream_length
@@ -299,7 +296,7 @@ class DownstreamSpillbackSimulation:
                 distance = 0 if self.is_car_at_stop_line else self.car_intersection_approach_length
             else:
                 queue = pedestrian_queue
-                distance = 0 if self.is_pedestrian_at_crossing else self.pedestrian_approach_length
+                distance = 0
             participant_type = Car if kind is Kind.CAR else Pedestrian
             participant = participant_type(self.env, queue, participant_id, self.now())
             self.journal.participants.append(participant)

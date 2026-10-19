@@ -39,25 +39,25 @@ class RandomFlowTests(unittest.TestCase):
         for traveler in first.travelers:
             self.assertGreater(traveler.appeared_at, 0)
             self.assertLess(traveler.appeared_at, 600)
-            expected_speed, distance = (
-                (15, 150)
-                if traveler.kind == "car"
-                else (1.4, 0)
-            )
-            self.assertEqual(traveler.speed, expected_speed)
-            self.assertAlmostEqual(
-                traveler.arrived_at - traveler.appeared_at,
-                distance / traveler.speed,
-            )
+            if traveler.kind == "car":
+                self.assertEqual(traveler.speed, 15)
+                self.assertAlmostEqual(
+                    traveler.arrived_at - traveler.appeared_at,
+                    150 / traveler.speed,
+                )
+            else:
+                self.assertEqual(traveler.speed, 1.4)
+                self.assertAlmostEqual(traveler.arrived_at - traveler.appeared_at, 28 / traveler.speed)
 
-    def test_pedestrians_arrive_immediately_without_extending_simulation(self):
+    def test_pedestrians_finish_walking_after_generation_ends(self):
         with redirect_stdout(io.StringIO()):
             result = RandomFlowSimulation(seed=42, horizon_ms=5).run()
         self.assertTrue(result.travelers)
         self.assertTrue(all(p.kind == "pedestrian" for p in result.travelers))
         for pedestrian in result.travelers:
-            self.assertEqual(pedestrian.arrived_at, pedestrian.appeared_at)
-        self.assertEqual(result.finished_at, 5)
+            self.assertAlmostEqual(pedestrian.arrived_at - pedestrian.appeared_at, 20)
+        self.assertEqual(result.finished_at, max(p.arrived_at for p in result.travelers))
+        self.assertGreater(result.finished_at, 5)
 
 
 if __name__ == "__main__":

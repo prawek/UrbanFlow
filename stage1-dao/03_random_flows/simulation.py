@@ -1,6 +1,7 @@
 """Воспроизводимые независимые пуассоновские потоки на одной улице."""
 
 import random
+from math import isfinite
 from dataclasses import dataclass, field
 
 import simpy
@@ -62,15 +63,19 @@ class RandomFlowSimulation:
         self,
         seed: int = 42,
         horizon_ms: float = 600,
-        approach_length: float = 150,
+        car_approach_length: float = 150,
+        pedestrian_approach_length: float = 28,
     ) -> None:
         if horizon_ms <= 0:
             raise ValueError("Горизонт генерации должен быть положительным")
-        if approach_length <= 0:
+        if car_approach_length <= 0:
             raise ValueError("Длина подъезда к перекрёстку должна быть положительной")
+        if pedestrian_approach_length < 0:
+            raise ValueError("Длина подхода пешехода должна быть неотрицательной")
         self.seed = seed
         self.horizon_ms = horizon_ms
-        self.approach_length = approach_length
+        self.car_approach_length = car_approach_length
+        self.pedestrian_approach_length = pedestrian_approach_length
 
     def run(self) -> Journal:
         env = simpy.Environment()
@@ -87,7 +92,9 @@ class RandomFlowSimulation:
             journal.travelers.append(traveler)
             print(f"time={env.now:.3f}, id={traveler.id}, kind={traveler.kind}, appeared")
             if kind == "car":
-                env.process(traveler.travel(env, self.approach_length))
+                env.process(traveler.travel(env, self.car_approach_length))
+            elif self.pedestrian_approach_length > 0:
+                env.process(traveler.travel(env, self.pedestrian_approach_length))
             else:
                 traveler.arrive(env)
 

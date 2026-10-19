@@ -284,7 +284,6 @@ class CoordinatedCorridorSimulation:
         seed: int = 42,
         horizon_ms: float = 600,
         intersection_approach_length: float = 150,
-        pedestrian_approach_length: float = 28,
         central_crossing_length: float = 30,
         pedestrian_crossing_length: float = 7,
         receiver_approach_length: float = 150,
@@ -298,7 +297,6 @@ class CoordinatedCorridorSimulation:
     ) -> None:
         lengths = (
             intersection_approach_length,
-            pedestrian_approach_length,
             central_crossing_length,
             pedestrian_crossing_length,
             receiver_approach_length,
@@ -315,7 +313,6 @@ class CoordinatedCorridorSimulation:
         self.seed = seed
         self.horizon_ms = horizon_ms
         self.car_intersection_approach_length = intersection_approach_length
-        self.pedestrian_approach_length = pedestrian_approach_length
         self.central_crossing_length = central_crossing_length
         self.pedestrian_crossing_length = pedestrian_crossing_length
         self.receiver_approach_length = receiver_approach_length
@@ -398,7 +395,7 @@ class CoordinatedCorridorSimulation:
                 self.env.process(participant.serve_crossing(central_signal, self.pedestrian_crossing_length))
             self.journal.participants.append(participant)
             print(f"time={self.now():.3f}, id={participant.id}, kind={participant.kind.value}, appeared")
-            distance = 0 if self.is_pedestrian_at_crossing else self.pedestrian_approach_length
+            distance = 0
             participant_processes.append(self.env.process(participant.run(distance)))
 
         def prefill_left_approach():

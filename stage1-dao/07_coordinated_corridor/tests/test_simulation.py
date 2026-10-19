@@ -31,6 +31,13 @@ def run_simulation(**kwargs):
 
 
 class CoordinatedCorridorTests(unittest.TestCase):
+    def test_pedestrians_appear_at_crossing_and_keep_phase_boundary_rule(self):
+        _, result = run_simulation(car_arrivals=[], pedestrian_arrivals=[1, 48])
+        group = [p for p in result.participants if p.kind is Kind.PEDESTRIAN]
+        self.assertEqual([p.central_queue_entered_at for p in group], [1, 48])
+        self.assertEqual([p.central_started_at for p in group], [48, 108])
+        self.assertEqual([p.finished_at for p in group], [53, 113])
+
     def test_waits_for_later_arrivals_after_queue_drains(self):
         _, result = run_simulation(
             car_arrivals=[CarArrival(0, Direction.STRAIGHT), CarArrival(120, Direction.STRAIGHT)],
