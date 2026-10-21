@@ -4,7 +4,7 @@
     <content url="file://$MODULE_DIR$">
       <sourceFolder url="file://$MODULE_DIR$/stage1-dao" isTestSource="false" />
       <excludeFolder url="file://$MODULE_DIR$/.venv" />
-      <excludeFolder url="file://$MODULE_DIR$/stage1_lev_implementation/.venv" />
+      <excludeFolder url="file://$MODULE_DIR$/stage1_lev/.venv" />
     </content>
     <orderEntry type="jdk" jdkName="~\PycharmProjects\UrbanFlow\.venv" jdkType="Python SDK" />
     <orderEntry type="sourceFolder" forTests="false" />

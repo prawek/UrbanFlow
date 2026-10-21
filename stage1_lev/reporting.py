@@ -5,7 +5,7 @@ import json
 from dataclasses import asdict, fields
 from pathlib import Path
 
-from .data import Event, Participant
+from .data import Event
 
 
 def display(result, show_log=False):
@@ -24,7 +24,7 @@ def export(result, output):
     destination.mkdir(parents=True, exist_ok=True)
     for filename, record_type, rows in (
         ("events.csv", Event, result.events),
-        ("participants.csv", Participant, result.participants),
+        ("participants.csv", result.participant_type, result.participants),
     ):
         with (destination / filename).open("w", encoding="utf-8-sig", newline="") as stream:
             writer = csv.DictWriter(stream, fieldnames=[f.name for f in fields(record_type)])

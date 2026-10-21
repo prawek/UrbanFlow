@@ -11,9 +11,9 @@ from tempfile import TemporaryDirectory
 
 import simpy
 
-from stage1_lev_implementation import exercise01, exercise02, exercise03
-from stage1_lev_implementation.data import Result
-from stage1_lev_implementation.reporting import export
+from stage1_lev import exercise01, exercise02, exercise03
+from stage1_lev.data import Result
+from stage1_lev.reporting import export
 
 
 class TrafficLightTests(unittest.TestCase):
