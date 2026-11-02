@@ -1,12 +1,12 @@
-"""Сценарии из методички и проверки границ разрешённых интервалов."""
+"""Сценарии из методички и проверки границ разрешённых интервалов"""
 
 import csv
 import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
-from stage1_lev import exercise04
-from stage1_lev.reporting import export
+from stage1_lev.exercises import exercise04
+from stage1_lev.common.reporting import export
 
 
 def participants(result, kind):
@@ -126,7 +126,7 @@ class CrossingTests(unittest.TestCase):
 
     def test_export_contains_queue_timestamps_and_metrics(self):
         result = exercise04.demo()
-        with TemporaryDirectory() as temporary:
+        with TemporaryDirectory(dir=Path(__file__).resolve().parents[1]) as temporary:
             destination = export(result, Path(temporary))
             with (destination / "participants.csv").open(encoding="utf-8-sig", newline="") as stream:
                 reader = csv.DictReader(stream)

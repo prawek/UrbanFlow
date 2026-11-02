@@ -5,8 +5,8 @@ import csv
 from pathlib import Path
 from random import Random
 
-from . import exercise04
-from .data import validate_number
+from .exercises import exercise04
+from .common.data import validate_number
 
 
 def car_schedule(seed, rate, horizon):

@@ -1,4 +1,4 @@
-"""Проверки резервов, блокирования и маршрутов заданий 6 и 6а."""
+"""Проверки резервов, блокирования и маршрутов заданий 6 и 6а"""
 
 import csv
 import json
@@ -7,9 +7,9 @@ from dataclasses import replace
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
-from stage1_lev import exercise06, exercise06a
-from stage1_lev.reporting import export
-from stage1_lev.roads import SegmentConfig, simulate
+from stage1_lev.exercises import exercise06, exercise06a
+from stage1_lev.common.reporting import export
+from stage1_lev.common.roads import SegmentConfig, simulate
 
 
 def cars(result):
@@ -144,7 +144,7 @@ class SequentialSegmentsTests(RoadRulesMixin, unittest.TestCase):
         self.assert_complete_and_safe(result, exercise06a.SEGMENTS)
 
     def test_car_starts_on_green_with_fractional_duration(self):
-        """Дробный цикл не должен задерживать автомобиль при включении зелёного."""
+        """Дробный цикл не должен задерживать автомобиль при включении зелёного"""
         segments = tuple(
             replace(segment, green_duration=20.1)
             if segment.name == "A" else segment
@@ -205,7 +205,7 @@ class SequentialSegmentsTests(RoadRulesMixin, unittest.TestCase):
                             for r in result.monitoring))
         self.assertTrue(all(v.crossing_started_at >= 180 for v in visits(result, "C")))
         self.assertEqual(cars(result)[-1].arrived_at, 264)
-        # Запрет проезда автомобилей не останавливает местный контроллер и пешеходов.
+        # Запрет проезда автомобилей не останавливает местный контроллер и пешеходов
         ped_c = next(p for p in result.participants if p.local_segment == "C")
         self.assertEqual((ped_c.queue_left_at, ped_c.arrived_at), (17, 22))
         self.assertTrue(any(time < 180 and phase == "pedestrian" for time, phase in signal_log(result, "C")))
@@ -263,7 +263,7 @@ class SequentialSegmentsTests(RoadRulesMixin, unittest.TestCase):
 
     def test_export_has_flat_participants_and_route_and_monitoring_tables(self):
         result = exercise06a.demo()
-        with TemporaryDirectory() as temporary:
+        with TemporaryDirectory(dir=Path(__file__).resolve().parents[1]) as temporary:
             directory = export(result, Path(temporary))
             summary = json.loads((directory / "summary.json").read_text(encoding="utf-8"))
             self.assertEqual(summary, result.summary())

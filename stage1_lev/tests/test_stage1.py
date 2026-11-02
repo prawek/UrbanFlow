@@ -1,4 +1,4 @@
-"""Проверки условий методичек, а не результатов эталонных реализаций."""
+"""Проверки условий методичек, а не результатов эталонных реализаций"""
 
 import csv
 import io
@@ -11,9 +11,9 @@ from tempfile import TemporaryDirectory
 
 import simpy
 
-from stage1_lev import exercise01, exercise02, exercise03
-from stage1_lev.data import Result
-from stage1_lev.reporting import export
+from stage1_lev.exercises import exercise01, exercise02, exercise03
+from stage1_lev.common.data import Result
+from stage1_lev.common.reporting import export
 
 
 class TrafficLightTests(unittest.TestCase):
@@ -78,7 +78,7 @@ class ParallelTravelTests(unittest.TestCase):
 
 
 class ScriptedRandom:
-    """Подставные интервалы для точной проверки границы генерации."""
+    """Подставные интервалы для точной проверки границы генерации"""
 
     def __init__(self, intervals):
         self.intervals = iter(intervals)
@@ -172,7 +172,6 @@ class RandomFlowTests(unittest.TestCase):
         self.assertEqual(random.getstate(), state)
 
     def test_counts_match_expected_means_over_many_seeds(self):
-        # Для 200 запусков стандартная ошибка среднего: sqrt(60/200), sqrt(30/200).
         totals = {"car": 0, "pedestrian": 0}
         for seed in range(200):
             for p in exercise03.run(seed).participants:
@@ -190,7 +189,7 @@ class RandomFlowTests(unittest.TestCase):
 class ReportingTests(unittest.TestCase):
     def test_export_preserves_participants_and_exact_times(self):
         result = exercise03.run()
-        with TemporaryDirectory() as temporary:
+        with TemporaryDirectory(dir=Path(__file__).resolve().parents[1]) as temporary:
             path = export(result, temporary)
             summary = json.loads((path / "summary.json").read_text(encoding="utf-8"))
             self.assertEqual(summary, result.summary())
@@ -204,7 +203,7 @@ class ReportingTests(unittest.TestCase):
                 self.assertEqual(len(list(csv.DictReader(stream))), len(result.events))
 
     def test_empty_participant_csv_has_header(self):
-        with TemporaryDirectory() as temporary:
+        with TemporaryDirectory(dir=Path(__file__).resolve().parents[1]) as temporary:
             path = export(exercise01.run(), Path(temporary))
             with (path / "participants.csv").open(encoding="utf-8-sig", newline="") as stream:
                 reader = csv.DictReader(stream)
