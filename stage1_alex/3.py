@@ -1,4 +1,5 @@
 """Воспроизводимые независимые пуассоновские потоки на одной улице."""
+import math
 import random
 from dataclasses import dataclass, field
 import simpy
@@ -35,18 +36,18 @@ class Journal:
 
 
 def poisson_source(
-        env: simpy.Environment,
-        kind: str,
-        rate_per_hour: float,
-        horizon_ms: float,
-        rng: random.Random,
-        spawn_factory: callable,
+    env: simpy.Environment,
+    kind: str,
+    rate_per_hour: float,
+    horizon_s: float,
+    rng: random.Random,
+    spawn_factory: callable,
 ) -> None:
     rate_per_second = rate_per_hour / 3600.0
     while True:
         interval = rng.expovariate(rate_per_second)
-        if env.now + interval >= horizon_ms:
-            yield env.timeout(horizon_ms - env.now)
+        if env.now + interval >= horizon_s:
+            yield env.timeout(horizon_s - env.now)
             return
         yield env.timeout(interval)
         spawn_factory(kind)
@@ -54,21 +55,21 @@ def poisson_source(
 
 class RandomFlowSimulation:
     def __init__(
-            self,
-            seed: int = 42,
-            horizon_ms: float = 600.0,
-            car_approach_length: float = 150.0,
-            pedestrian_approach_length: float = 28.0,
+        self,
+        seed: int = 42,
+        horizon_s: float = 600.0,
+        car_approach_length: float = 150.0,
+        pedestrian_approach_length: float = 28.0,
     ) -> None:
-        if horizon_ms <= 0:
-            raise ValueError("Горизонт генерации должен быть положительным")
-        if car_approach_length <= 0:
-            raise ValueError("Длина подъезда к перекрёстку должна быть положительной")
-        if pedestrian_approach_length < 0:
-            raise ValueError("Длина подхода пешехода должна быть неотрицательной")
-
+        if not math.isfinite(horizon_s) or horizon_s <= 0:
+            raise ValueError("Горизонт генерации должен быть конечным положительным числом")
+        if not math.isfinite(car_approach_length) or car_approach_length <= 0:
+            raise ValueError("Длина подъезда к перекрёстку должна быть конечным положительным числом")
+        if not math.isfinite(pedestrian_approach_length) or pedestrian_approach_length < 0:
+            raise ValueError("Длина подхода пешехода должна быть конечным неотрицательным числом")
+        
         self.seed = seed
-        self.horizon_ms = horizon_ms
+        self.horizon_s = horizon_s
         self.car_approach_length = car_approach_length
         self.pedestrian_approach_length = pedestrian_approach_length
 
@@ -86,7 +87,7 @@ class RandomFlowSimulation:
             )
             journal.travelers.append(traveler)
             print(f"time={env.now:.3f}, id={traveler.id}, kind={traveler.kind}, appeared")
-
+            
             if kind == "car":
                 env.process(traveler.travel(env, self.car_approach_length))
             elif self.pedestrian_approach_length > 0:
@@ -96,15 +97,15 @@ class RandomFlowSimulation:
 
         env.process(
             poisson_source(
-                env, "car", 360.0, self.horizon_ms, random.Random(self.seed), spawn
+                env, "car", 360.0, self.horizon_s, random.Random(self.seed), spawn
             )
         )
         env.process(
             poisson_source(
-                env, "pedestrian", 180.0, self.horizon_ms, random.Random(self.seed + 1), spawn
+                env, "pedestrian", 180.0, self.horizon_s, random.Random(self.seed + 1), spawn
             )
         )
-
+        
         env.run()
         journal.finished_at = float(env.now)
         return journal
