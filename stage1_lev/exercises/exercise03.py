@@ -4,7 +4,8 @@ from random import Random
 
 import simpy
 
-from ..common.data import Participant, Result, validate_number
+from ..common.monitoring import Result
+from ..common.data import Participant, validate_number
 from .exercise02 import move
 from ..common.flows import arrival_clock
 

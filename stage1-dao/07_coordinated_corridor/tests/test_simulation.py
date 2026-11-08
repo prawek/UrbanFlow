@@ -10,6 +10,7 @@ from .. import (
     Direction,
     Kind,
 )
+from ..simulation import Car, LightPhase, PhaseController
 
 
 def cars(result):
@@ -47,7 +48,7 @@ class CoordinatedCorridorTests(unittest.TestCase):
         self.assertEqual(result.finished_at, 134)
         self.assertEqual(result.count_finished(), 2)
 
-    def test_car_can_finish_after_central_and_receiver_phase_ends(self):
+    def test_late_cars_wait_for_next_central_green_in_fifo_order(self):
         simulation, result = run_simulation(
             car_arrivals=[CarArrival(23, Direction.STRAIGHT), CarArrival(24, Direction.STRAIGHT)],
             pedestrian_arrivals=[], is_car_at_stop_line=True,
@@ -55,11 +56,110 @@ class CoordinatedCorridorTests(unittest.TestCase):
         self.assertEqual(
             [(car.central_started_at, car.central_finished_at, car.receiver_started_at, car.finished_at)
              for car in cars(result)],
-            [(23, 25, 35, 37), (60, 62, 72, 74)],
+            [(60, 62, 72, 74), (62, 64, 74, 76)],
         )
         self.assertEqual(result.count(Kind.CAR), 2)
         self.assertEqual(result.count_finished(), 2)
         self.assertEqual(simulation.free_places_at_end_count, {"straight": 5, "left": 3, "right": 2})
+
+    def test_remaining_green_at_every_central_signal(self):
+        for direction, phase_end, next_green in (
+            (Direction.STRAIGHT, 24, 60),
+            (Direction.LEFT, 36, 84),
+            (Direction.RIGHT, 48, 96),
+        ):
+            for duration in (2, 3):
+                for arrival, expected_start in (
+                    (phase_end - duration, phase_end - duration),
+                    (phase_end - duration + 1, next_green),
+                    (phase_end, next_green),
+                ):
+                    with self.subTest(direction=direction, duration=duration, arrival=arrival):
+                        _, result = run_simulation(
+                            car_arrivals=[CarArrival(arrival, direction)],
+                            pedestrian_arrivals=[1], is_car_at_stop_line=True,
+                            central_crossing_length=15 * duration,
+                        )
+                        car = cars(result)[0]
+                        self.assertEqual(car.central_started_at, expected_start)
+                        self.assertEqual(car.central_finished_at, expected_start + duration)
+                        pedestrian = next(p for p in result.participants if p.kind is Kind.PEDESTRIAN)
+                        self.assertEqual(pedestrian.central_started_at, 48)
+                        self.assertTrue(
+                            car.central_finished_at <= pedestrian.central_started_at
+                            or pedestrian.central_finished_at <= car.central_started_at
+                        )
+
+    def test_remaining_green_at_every_receiver(self):
+        for direction, central_start, phase_end, next_green in (
+            (Direction.STRAIGHT, 22, 36, 72),
+            (Direction.LEFT, 34, 48, 96),
+            (Direction.RIGHT, 46, 60, 108),
+        ):
+            for duration in (2, 3):
+                for remaining in (duration, duration - 1, 0):
+                    with self.subTest(direction=direction, duration=duration, remaining=remaining):
+                        arrival = phase_end - remaining
+                        _, result = run_simulation(
+                            car_arrivals=[CarArrival(central_start, direction)],
+                            pedestrian_arrivals=[], is_car_at_stop_line=True,
+                            receiver_approach_length=15 * (arrival - central_start - 2),
+                            receiver_crossing_length=15 * duration,
+                        )
+                        car = cars(result)[0]
+                        expected_start = arrival if remaining == duration else next_green
+                        self.assertEqual(car.receiver_arrived_at, arrival)
+                        self.assertEqual(car.receiver_started_at, expected_start)
+                        self.assertEqual(car.finished_at, expected_start + duration)
+
+    def test_receiver_rechecks_remaining_green_after_blockage(self):
+        # Предзаполненная машина уже ждёт у принимающего светофора.
+        for release_at, expected_start in ((46, 46), (47, 96), (48, 96)):
+            with self.subTest(release_at=release_at):
+                _, result = run_simulation(
+                    car_arrivals=[], pedestrian_arrivals=[], prefilled_left_count=1,
+                    left_release_blocked_until=release_at,
+                )
+                car = result.participants[0]
+                self.assertEqual(car.receiver_started_at, expected_start)
+                self.assertEqual(car.finished_at, expected_start + 2)
+
+    def test_capacity_release_rechecks_remaining_central_green(self):
+        # Изолируем освобождение места от расписания принимающего перекрёстка:
+        # t=22 — успеваем за 2 с, t=23 — времени мало, t=24 — другая фаза.
+        for release_at, expected_start in ((22, 22), (23, 60), (24, 60)):
+            with self.subTest(release_at=release_at):
+                env = simpy.Environment()
+                direction = Direction.STRAIGHT
+                queue = simpy.Store(env)
+                car = Car(env, queue, 1, 0, direction)
+                queue.put(car)
+                signal = PhaseController(
+                    env, "central",
+                    ((LightPhase.STRAIGHT, 24), (LightPhase.LEFT, 12),
+                     (LightPhase.RIGHT, 12), (LightPhase.PEDESTRIANS, 12)),
+                )
+                free_places = {direction: simpy.Container(env, capacity=1, init=0)}
+                capacity_changed = {direction: env.event()}
+
+                def release():
+                    yield env.timeout(release_at)
+                    yield free_places[direction].put(1)
+                    capacity_changed[direction].succeed()
+
+                def travel_to_receiver(participant):
+                    yield env.timeout(0)
+
+                with redirect_stdout(io.StringIO()):
+                    env.process(signal.run())
+                    env.process(car.serve_crossing(signal, 30, free_places, capacity_changed, travel_to_receiver))
+                    env.process(release())
+                    env.run(until=25)
+                    # Если времени мало, свободное место не резервируется на красный.
+                    self.assertEqual(free_places[direction].level, int(release_at > 22))
+                    env.run(until=expected_start + 3 if expected_start > 22 else 26)
+                self.assertEqual(car.central_started_at, expected_start)
+                self.assertEqual(car.central_finished_at, expected_start + 2)
 
     def test_prefilled_cars_finish_without_new_arrivals(self):
         simulation, result = run_simulation(

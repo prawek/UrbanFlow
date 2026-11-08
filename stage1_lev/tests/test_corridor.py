@@ -3,11 +3,14 @@
 import csv
 import json
 import unittest
+from dataclasses import replace
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
-from stage1_lev.common.corridor import CarArrival, Direction
+from stage1_lev.common.corridor import CoordinatedCorridor
+from stage1_lev.common.data import CarArrival, CorridorParticipant, Direction
 from stage1_lev.common.reporting import export
+from stage1_lev.common.roads import IntersectionConfig, SegmentConfig
 from stage1_lev.exercises import exercise07
 
 
@@ -33,7 +36,7 @@ class CoordinatedCorridorTests(unittest.TestCase):
         for car in cars(result):
             visits = route(result, car)
             self.assertEqual(len(visits), 1 if car.is_initial else 2)
-            central_start, central_end, receiver_start, receiver_end = windows[car.direction]
+            central_start, central_end, receiver_start, receiver_end = windows[car.entry_direction]
             for visit in visits:
                 start, end = ((central_start, central_end) if visit.segment == "A"
                               else (receiver_start, receiver_end))
@@ -42,7 +45,8 @@ class CoordinatedCorridorTests(unittest.TestCase):
                 self.assertAlmostEqual(visit.crossing_finished_at - visit.crossing_started_at, 2)
                 self.assertGreaterEqual(visit.crossing_started_at, visit.queue_entered_at)
                 self.assertEqual(visit.exited_at, visit.crossing_finished_at)
-                self.assertEqual(visit.direction, car.direction.value)
+                self.assertEqual(visit.direction, car.entry_direction.value
+                                 if visit.segment == "A" else Direction.STRAIGHT.value)
             self.assertEqual(visits[-1].exited_at, car.arrived_at)
             if not car.is_initial:
                 source, target = visits
@@ -58,7 +62,7 @@ class CoordinatedCorridorTests(unittest.TestCase):
                                           (Direction.RIGHT, "B_R", 2)):
             for segment in ("A", name):
                 visits = [v for v in result.visits if v.segment == segment
-                          and v.direction == direction.value]
+                          and (segment != "A" or v.direction == direction.value)]
                 self.assertEqual(
                     [v.participant_id for v in sorted(visits, key=lambda v: v.queue_entered_at)],
                     [v.participant_id for v in sorted(visits, key=lambda v: v.crossing_started_at)],
@@ -103,7 +107,7 @@ class CoordinatedCorridorTests(unittest.TestCase):
 
     def test_full_left_approach_only_blocks_left_turn(self):
         result = exercise07.spillback_demo()
-        generated = {p.direction: p for p in cars(result) if not p.is_initial}
+        generated = {p.entry_direction: p for p in cars(result) if not p.is_initial}
         self.assertEqual(route(result, generated[Direction.STRAIGHT])[0].crossing_started_at, 0)
         self.assertEqual(route(result, generated[Direction.RIGHT])[0].crossing_started_at, 36)
         left = route(result, generated[Direction.LEFT])[0]
@@ -165,13 +169,14 @@ class CoordinatedCorridorTests(unittest.TestCase):
         self.assert_safe_and_finished(empty)
         random_empty = exercise07.run(car_rate=0, pedestrian_rate=0)
         self.assertEqual(random_empty.finished_at, 600)
-        result = exercise07.run(car_arrivals=[CarArrival(0, "straight"), CarArrival(120, "straight")],
+        result = exercise07.run(car_arrivals=[CarArrival(0, Direction.STRAIGHT),
+                                             CarArrival(120, Direction.STRAIGHT)],
                                 pedestrian_arrivals=[], cars_at_crossing=True)
         self.assertEqual([p.arrived_at for p in cars(result)], [14, 134])
 
     def test_sources_exclude_horizon_and_drain_participants(self):
         result = exercise07.run(
-            car_arrivals=[CarArrival(t, "straight") for t in (599, 600, 601)],
+            car_arrivals=[CarArrival(t, Direction.STRAIGHT) for t in (599, 600, 601)],
             pedestrian_arrivals=[599, 600, 601],
         )
         self.assertEqual(len(result.participants), 2)
@@ -194,8 +199,8 @@ class CoordinatedCorridorTests(unittest.TestCase):
         more_cars = exercise07.run(7, car_rate=720)
         self.assertEqual([p.appeared_at for p in baseline.participants if p.kind == "pedestrian"],
                          [p.appeared_at for p in more_cars.participants if p.kind == "pedestrian"])
-        self.assertEqual([p.direction for p in cars(baseline)],
-                         [p.direction for p in cars(more_cars)[:len(cars(baseline))]])
+        self.assertEqual([p.entry_direction for p in cars(baseline)],
+                         [p.entry_direction for p in cars(more_cars)[:len(cars(baseline))]])
 
     def test_direction_frequencies(self):
         result = exercise07.run(horizon=36000, pedestrian_arrivals=[])
@@ -203,7 +208,7 @@ class CoordinatedCorridorTests(unittest.TestCase):
         self.assertGreater(len(members), 3000)
         for direction, probability in ((Direction.STRAIGHT, 0.5), (Direction.LEFT, 0.3),
                                         (Direction.RIGHT, 0.2)):
-            frequency = sum(p.direction == direction for p in members) / len(members)
+            frequency = sum(p.entry_direction == direction for p in members) / len(members)
             self.assertAlmostEqual(frequency, probability, delta=0.04)
 
     def test_export_contains_routes_directions_and_initial_cars(self):
@@ -214,7 +219,8 @@ class CoordinatedCorridorTests(unittest.TestCase):
                              result.summary())
             with (directory / "participants.csv").open(encoding="utf-8-sig", newline="") as stream:
                 rows = list(csv.DictReader(stream))
-            self.assertEqual({r["direction"] for r in rows}, {"straight", "left", "right", ""})
+            self.assertEqual({r["entry_direction"] for r in rows}, {"straight", "left", "right", ""})
+            self.assertEqual({r["direction"] for r in rows}, {"straight", ""})
             self.assertEqual(sum(r["is_initial"] == "True" for r in rows), 3)
             self.assertNotIn("reserved_segment", rows[0])
             self.assertNotIn("current_segment", rows[0])
@@ -230,6 +236,141 @@ class CoordinatedCorridorTests(unittest.TestCase):
                        {"car_arrivals": [0]}, {"pedestrian_arrivals": [-1]}):
             with self.subTest(kwargs=kwargs), self.assertRaises(ValueError):
                 exercise07.run(**kwargs)
-        for time, direction in ((-1, "straight"), (float("nan"), "left"), (0, "unknown")):
+        for time, direction in ((-1, Direction.STRAIGHT), (float("nan"), Direction.LEFT),
+                                (0, "unknown"), (0, "straight")):
             with self.assertRaises(ValueError):
                 CarArrival(time, direction)
+
+
+class ConfigurableIntersectionTests(unittest.TestCase):
+    def test_renaming_roads_preserves_lanes_times_and_first_queue_statistics(self):
+        names = {"A": "entry", "B_T": "A", "B_L": "west", "B_R": "east"}
+
+        def renamed(config):
+            return replace(config, incoming=replace(config.incoming, name=names[config.incoming.name]),
+                           outgoing={direction: renamed(receiver)
+                                     for direction, receiver in config.outgoing.items()})
+
+        baseline = exercise07.spillback_demo()
+        changed = exercise07.run(
+            config=renamed(exercise07.CONFIG),
+            car_arrivals=[CarArrival(0, direction) for direction in Direction],
+            pedestrian_arrivals=[1], cars_at_crossing=True,
+            prefilled_left_count=3, left_release_blocked_until=120,
+        )
+        def timings(result):
+            return [(p.kind, p.appeared_at, p.arrived_at, p.queue_entered_at, p.queue_left_at,
+                     p.queue_wait, p.direction, p.entry_direction, p.is_initial)
+                    for p in result.participants]
+
+        self.assertEqual(timings(changed), timings(baseline))
+        self.assertEqual(changed.completed_by_direction(), baseline.completed_by_direction())
+        self.assertEqual(changed.closures, {"west": {"release_blocked_until": 120}})
+        self.assertEqual(
+            [(visit.segment, visit.queue_entered_at, visit.crossing_started_at)
+             for visit in changed.visits],
+            [(names[visit.segment], visit.queue_entered_at, visit.crossing_started_at)
+             for visit in baseline.visits],
+        )
+        self.assertTrue(any(row.segment == "entry" and row.left_queue_len == 1
+                            for row in changed.monitoring))
+
+    def test_a_new_turn_is_chosen_at_each_intersection(self):
+        exit_config = IntersectionConfig(
+            SegmentConfig("exit", 15, 30, 15, capacity=1), (("green", 60),),
+            car_phases={Direction.STRAIGHT: "green"}, left_probability=0, right_probability=0,
+        )
+        middle = replace(
+            exercise07.CONFIG.outgoing[Direction.LEFT],
+            car_phases={Direction.RIGHT: "green"}, left_probability=0, right_probability=1,
+            outgoing={Direction.RIGHT: exit_config},
+        )
+        config = replace(exercise07.CONFIG, left_probability=1, right_probability=0,
+                         outgoing={Direction.LEFT: middle})
+        network = CoordinatedCorridor(42, config)
+        network.spawn_car()
+        result = network.run([])
+        car = cars(result)[0]
+        self.assertEqual([(visit.segment, visit.direction) for visit in route(result, car)],
+                         [("A", "left"), ("B_L", "right"), ("exit", "straight")])
+        self.assertEqual(car.entry_direction, Direction.LEFT)
+        self.assertEqual(car.direction, Direction.STRAIGHT)
+        self.assertEqual(car.arrived_at, 41)
+        self.assertEqual(result.completed_by_direction(), {"straight": 0, "left": 1, "right": 0})
+        self.assertTrue(all(state["free_count"] == state["capacity"]
+                            and state["reserved_count"] == 0
+                            for state in result.final_segments.values()))
+
+    def test_capacity_and_phases_come_from_receiver_configuration(self):
+        left = exercise07.CONFIG.outgoing[Direction.LEFT]
+        config = replace(exercise07.CONFIG, outgoing={
+            **exercise07.CONFIG.outgoing,
+            Direction.LEFT: replace(left, incoming=replace(left.incoming, capacity=1),
+                                    phases_duration=(("green", 60),)),
+        })
+        result = exercise07.run(
+            config=config, car_arrivals=[CarArrival(0, Direction.LEFT)] * 3,
+            pedestrian_arrivals=[], cars_at_crossing=True,
+        )
+        self.assertEqual([visit.crossing_started_at for visit in result.visits
+                          if visit.segment == "A"], [24, 84, 144])
+        self.assertEqual([car.arrived_at for car in cars(result)], [38, 98, 158])
+        self.assertEqual(max(row.occupied_count + row.reserved_count for row in result.monitoring
+                             if row.segment == "B_L"), 1)
+        with self.assertRaises(ValueError):
+            exercise07.run(config=config, car_arrivals=[], pedestrian_arrivals=[],
+                           prefilled_left_count=2)
+
+    def test_pedestrians_can_be_served_at_a_receiving_intersection(self):
+        left = replace(exercise07.CONFIG.outgoing[Direction.LEFT],
+                       phases_duration=(("green", 20), ("pedestrian", 10)),
+                       pedestrian_crossing_time=7)
+        config = replace(exercise07.CONFIG, outgoing={Direction.LEFT: left})
+        network = CoordinatedCorridor(42, config)
+        pedestrian = CorridorParticipant("local-pedestrian", "pedestrian", 0)
+        network.register(pedestrian)
+        network.central.outgoing[Direction.LEFT].enqueue_pedestrian(pedestrian)
+        result = network.run([])
+        self.assertEqual(pedestrian.local_segment, "B_L")
+        self.assertEqual((pedestrian.queue_left_at, pedestrian.arrived_at), (20, 27))
+        self.assertEqual(result.summary()["pedestrian"]["mean_queue_wait"], 20)
+
+    def test_two_directions_can_share_a_receiving_intersection(self):
+        receiver = replace(exercise07.CONFIG.outgoing[Direction.STRAIGHT],
+                           incoming=SegmentConfig("shared", 0, 30, 15, capacity=1),
+                           phases_duration=(("green", 60),))
+        config = replace(exercise07.CONFIG, outgoing={
+            Direction.STRAIGHT: receiver, Direction.LEFT: receiver,
+        })
+        network = CoordinatedCorridor(42, config)
+        self.assertIs(network.central.outgoing[Direction.STRAIGHT],
+                      network.central.outgoing[Direction.LEFT])
+        network.spawn_car(Direction.STRAIGHT, at_stop=True)
+        network.spawn_car(Direction.LEFT, at_stop=True)
+        result = network.run([])
+        self.assertEqual([car.arrived_at for car in cars(result)], [4, 28])
+        self.assertEqual(result.final_segments["shared"]["free_count"], 1)
+
+    def test_total_wait_is_the_sum_of_waits_at_all_visited_intersections(self):
+        result = exercise07.spillback_demo()
+        for car in cars(result):
+            total = sum(visit.crossing_started_at - visit.queue_entered_at
+                        for visit in route(result, car))
+            self.assertEqual(car.queue_wait, total)
+        self.assertEqual(result.summary()["car"]["mean_queue_wait"],
+                         sum(car.queue_wait for car in cars(result)) / len(cars(result)))
+
+    def test_invalid_intersection_configuration_is_rejected(self):
+        for config in (
+            replace(exercise07.CONFIG, left_probability=-0.1),
+            replace(exercise07.CONFIG, right_probability=float("nan")),
+            replace(exercise07.CONFIG, left_probability=0.9, right_probability=0.2),
+            replace(exercise07.CONFIG, phases_duration=()),
+            replace(exercise07.CONFIG, phases_duration=(("straight", 1),)),
+            replace(exercise07.CONFIG, pedestrian_crossing_time=13),
+            replace(exercise07.CONFIG, car_phases={Direction.STRAIGHT: "pedestrian"}),
+            replace(exercise07.CONFIG, car_phases={Direction.STRAIGHT: "straight"}),
+            replace(exercise07.CONFIG, car_phases={"straight": "straight"}),
+        ):
+            with self.subTest(config=config), self.assertRaises(ValueError):
+                exercise07.run(config=config, car_arrivals=[], pedestrian_arrivals=[])

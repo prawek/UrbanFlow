@@ -125,8 +125,13 @@ class Car(Participant):
         direction = self.direction
         while True:
             participant = yield self.queue.get()
+            crossing_duration = participant.duration(crossing_length)
             while True:
-                if light_phase_controller.phase is not CENTRAL_PHASES[direction]:
+                # Место за перекрёстком резервируем только если успеем на текущий зелёный.
+                if (
+                    light_phase_controller.phase is not CENTRAL_PHASES[direction]
+                    or self.env.now + crossing_duration > light_phase_controller.phase_ends_at
+                ):
                     yield light_phase_controller.phase_changed_event
                     continue
                 if free_places[direction].level < 1:
@@ -138,7 +143,7 @@ class Car(Participant):
                 break
             participant.central_started_at = float(self.env.now)
             print(f"time={self.env.now:.3f}, id={participant.id}, kind={participant.kind.value}, direction={direction.value}, central_started")
-            yield self.env.timeout(participant.duration(crossing_length))
+            yield self.env.timeout(crossing_duration)
             participant.central_finished_at = float(self.env.now)
             print(f"time={self.env.now:.3f}, id={participant.id}, kind={participant.kind.value}, direction={direction.value}, central_finished")
             self.env.process(travel_to_receiver(participant))
@@ -147,18 +152,22 @@ class Car(Participant):
         direction = self.direction
         while True:
             participant = yield queue.get()
+            crossing_duration = participant.duration(crossing_length)
             while True:
                 if direction is Direction.LEFT and self.env.now < release_blocked_until:
                     yield self.env.timeout(release_blocked_until - self.env.now)
                     continue
                 controller = light_phase_controller
-                if controller.phase is not LightPhase.GREEN:
+                if (
+                    controller.phase is not LightPhase.GREEN
+                    or self.env.now + crossing_duration > controller.phase_ends_at
+                ):
                     yield controller.phase_changed_event
                     continue
                 break
             participant.receiver_started_at = float(self.env.now)
             print(f"time={self.env.now:.3f}, id={participant.id}, kind={participant.kind.value}, direction={direction.value}, receiver_started")
-            yield self.env.timeout(participant.duration(crossing_length))
+            yield self.env.timeout(crossing_duration)
             yield free_places[direction].put(1)
             notify_capacity(direction)
             participant.route_finished_event.succeed()

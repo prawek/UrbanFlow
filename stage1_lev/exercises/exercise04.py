@@ -4,9 +4,10 @@ from random import Random
 
 import simpy
 
-from ..common.data import CrossingResult, Pedestrian, Vehicle, validate_number
+from ..common.data import Pedestrian, Vehicle, validate_number
 from ..common.flows import arrival_clock, prepare_arrivals
-from ..common.signals import Signal
+from ..common.monitoring import CrossingResult
+from ..common.signals import BiPhaseController
 
 
 class Crossing:
@@ -52,6 +53,7 @@ class Crossing:
 
     def start_crossing(self, participant):
         participant.queue_left_at = float(self.env.now)
+        participant.queue_wait_total = self.env.now - participant.queue_entered_at
         self.result.record(self.env.now, participant.id, participant.kind, "crossing_started")
 
     def finish(self, participant):
@@ -127,7 +129,7 @@ def run(seed=42, *, horizon=600, car_rate=360, pedestrian_rate=180,
     pedestrian_arrivals = prepare_arrivals(pedestrian_arrivals)
     env = simpy.Environment()
     result = CrossingResult(exercise=4, seed=seed)
-    signal = Signal(env, result)
+    signal = BiPhaseController(env, result)
     crossing = Crossing(env, result, signal, 0 if cars_at_crossing else 150 / 15)
     env.process(signal.run())
     env.process(serve_cars(env, crossing))
