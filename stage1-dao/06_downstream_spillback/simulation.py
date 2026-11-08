@@ -104,8 +104,13 @@ class Car(Participant):
     ):
         while True:
             car = yield self.queue.get()
+            crossing_duration = car.duration(crossing_length)
             while True:
-                if light_phase_controller.phase is not LightPhase.VEHICLES:
+                # После ожидания места заново проверяем и фазу, и время до её конца.
+                if (
+                    light_phase_controller.phase is not LightPhase.VEHICLES
+                    or self.env.now + crossing_duration > light_phase_controller.phase_ends_at
+                ):
                     yield light_phase_controller.phase_changed_event
                     continue
                 if free_downstream.level < 1:
@@ -117,7 +122,7 @@ class Car(Participant):
                 break
             car.crossing_started_at = float(self.env.now)
             print(f"time={self.env.now:.3f}, id={car.id}, kind={car.kind.value}, crossing_started")
-            yield self.env.timeout(car.duration(crossing_length))
+            yield self.env.timeout(crossing_duration)
             car.crossing_finished_at = float(self.env.now)
             print(f"time={self.env.now:.3f}, id={car.id}, kind={car.kind.value}, downstream_entered")
             self.env.process(car.travel_downstream(downstream_length, exit_blocked_until, free_downstream, notify_capacity))
