@@ -3,7 +3,7 @@
 from dataclasses import dataclass, field
 
 from .data import (
-    CorridorParticipant, CrossingParticipant, Direction, Participant, RoadParticipant,
+    CorridorParticipant, CrossingParticipant, Direction, NetworkVehicle, Participant, RoadParticipant,
 )
 
 
@@ -197,4 +197,68 @@ class CorridorResult(RoadResult):
                 "generated": sum(not p.is_initial for p in members),
                 "arrived": result["completed_by_direction"][direction.value],
             }
+        return result
+
+
+@dataclass
+class NetworkVisit(SegmentVisit):
+    entered_at: float | None
+    reserved_at: float | None = None
+    intersection: str = ""
+    approach: str = ""
+
+
+@dataclass(frozen=True)
+class NetworkState:
+    time: float
+    created: int
+    arrived: int
+    in_network: int
+    external_waiting: int
+
+
+@dataclass
+class NetworkResult(RoadResult):
+    states: list[NetworkState] = field(default_factory=list)
+    final_external_queues: dict = field(default_factory=dict)
+
+    @property
+    def participant_type(self):
+        return NetworkVehicle
+
+    @property
+    def visit_type(self):
+        return NetworkVisit
+
+    def extra_tables(self):
+        return (*super().extra_tables(), ("states.csv", NetworkState, self.states))
+
+    def summary(self):
+        result = super().summary()
+        parameters = self.parameters[0]
+        result["sources"] = {}
+        for source in parameters["sources"]:
+            members = [car for car in self.participants if car.source == source["name"]]
+            finished = [car for car in members if car.arrived_at is not None]
+            result["sources"][source["name"]] = {
+                "created": len(members), "arrived": len(finished),
+                **{f"mean_{name}": sum(getattr(car, name) for car in finished) / len(finished)
+                   if finished else None
+                   for name in ("travel_time", "external_wait", "queue_wait", "delay")},
+            }
+        result["routes"] = {
+            route["name"]: sum(car.route == route["name"] for car in self.participants)
+            for route in parameters["routes"]
+        }
+        result["intersection_passages"] = {
+            junction["name"]: sum(visit.intersection == junction["name"]
+                                  and visit.crossing_finished_at is not None for visit in self.visits)
+            for junction in parameters["intersections"]
+        }
+        result["segment_entries"] = {
+            segment["name"]: sum(visit.segment == segment["name"] and visit.entered_at is not None
+                                  for visit in self.visits)
+            for segment in parameters["segments"]
+        }
+        result["external_queues"] = self.final_external_queues
         return result

@@ -7,10 +7,10 @@ from dataclasses import replace
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
-from stage1_lev.common.corridor import CoordinatedCorridor
-from stage1_lev.common.data import CarArrival, CorridorParticipant, Direction
+from stage1_lev.common.road_network import RoadNetwork
+from stage1_lev.common.data import CorridorParticipant, Direction
 from stage1_lev.common.reporting import export
-from stage1_lev.common.roads import IntersectionConfig, SegmentConfig
+from stage1_lev.common.roads import CarArrival, IntersectionConfig, SegmentConfig
 from stage1_lev.exercises import exercise07
 
 
@@ -287,7 +287,7 @@ class ConfigurableIntersectionTests(unittest.TestCase):
         )
         config = replace(exercise07.CONFIG, left_probability=1, right_probability=0,
                          outgoing={Direction.LEFT: middle})
-        network = CoordinatedCorridor(42, config)
+        network = RoadNetwork(42, config)
         network.spawn_car()
         result = network.run([])
         car = cars(result)[0]
@@ -326,7 +326,7 @@ class ConfigurableIntersectionTests(unittest.TestCase):
                        phases_duration=(("green", 20), ("pedestrian", 10)),
                        pedestrian_crossing_time=7)
         config = replace(exercise07.CONFIG, outgoing={Direction.LEFT: left})
-        network = CoordinatedCorridor(42, config)
+        network = RoadNetwork(42, config)
         pedestrian = CorridorParticipant("local-pedestrian", "pedestrian", 0)
         network.register(pedestrian)
         network.central.outgoing[Direction.LEFT].enqueue_pedestrian(pedestrian)
@@ -342,7 +342,7 @@ class ConfigurableIntersectionTests(unittest.TestCase):
         config = replace(exercise07.CONFIG, outgoing={
             Direction.STRAIGHT: receiver, Direction.LEFT: receiver,
         })
-        network = CoordinatedCorridor(42, config)
+        network = RoadNetwork(42, config)
         self.assertIs(network.central.outgoing[Direction.STRAIGHT],
                       network.central.outgoing[Direction.LEFT])
         network.spawn_car(Direction.STRAIGHT, at_stop=True)

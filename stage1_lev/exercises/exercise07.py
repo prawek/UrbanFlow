@@ -2,10 +2,10 @@
 
 from random import Random
 
-from ..common.corridor import CoordinatedCorridor
-from ..common.data import CarArrival, Direction, validate_number
+from ..common.road_network import RoadNetwork
+from ..common.data import Direction, validate_number
 from ..common.flows import prepare_arrivals, source
-from ..common.roads import IntersectionConfig, SegmentConfig
+from ..common.roads import CarArrival, IntersectionConfig, SegmentConfig
 
 
 CONFIG = IntersectionConfig(
@@ -61,7 +61,7 @@ def run(seed=42, *, config=CONFIG, horizon=600, car_rate=360, pedestrian_rate=18
     if left is None and (prefilled_left_count or left_release_blocked_until):
         raise ValueError("Для сценария затора нужен левый принимающий перекрёсток")
     closures = ({left.incoming.name: left_release_blocked_until} if left is not None else {})
-    network = CoordinatedCorridor(seed, config, release_blocked_until=closures)
+    network = RoadNetwork(seed, config, release_blocked_until=closures)
     if prefilled_left_count:
         network.prefill(network.central.outgoing[Direction.LEFT], prefilled_left_count,
                         entry_direction=Direction.LEFT)
