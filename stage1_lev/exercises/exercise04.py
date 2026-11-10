@@ -5,7 +5,7 @@ from random import Random
 import simpy
 
 from ..common.data import Pedestrian, Vehicle, validate_number
-from ..common.flows import arrival_clock, prepare_arrivals
+from ..common.flows import prepare_arrivals, source
 from ..common.monitoring import CrossingResult
 from ..common.signals import BiPhaseController
 
@@ -103,18 +103,6 @@ def serve_pedestrians(env, crossing):
                 crossing.finish(participant)
 
 
-def source(env, crossing, kind, rate, horizon, rng, arrivals):
-    if arrivals is not None:
-        for moment in arrivals:
-            yield env.timeout(moment - env.now)
-            crossing.spawn(kind)
-    else:
-        for waiting, is_arrival in arrival_clock(env, rate, horizon, rng):
-            yield waiting
-            if is_arrival:
-                crossing.spawn(kind)
-
-
 def run(seed=42, *, horizon=600, car_rate=360, pedestrian_rate=180,
         car_arrivals=None, pedestrian_arrivals=None, cars_at_crossing=False):
     """
@@ -135,9 +123,10 @@ def run(seed=42, *, horizon=600, car_rate=360, pedestrian_rate=180,
     env.process(serve_cars(env, crossing))
     env.process(serve_pedestrians(env, crossing))
     sources = [
-        env.process(source(env, crossing, "car", car_rate, horizon, Random(seed), car_arrivals)),
-        env.process(source(env, crossing, "pedestrian", pedestrian_rate, horizon,
-                           Random(seed + 1), pedestrian_arrivals)),
+        env.process(source(env, car_rate, horizon, Random(seed), car_arrivals,
+                           spawn=lambda _: crossing.spawn("car"))),
+        env.process(source(env, pedestrian_rate, horizon, Random(seed + 1), pedestrian_arrivals,
+                           spawn=lambda _: crossing.spawn("pedestrian"))),
     ]
     # Сначала дожидаемся источников, затем всех появившихся участников
     env.run(until=env.all_of(sources))

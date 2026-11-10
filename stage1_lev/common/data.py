@@ -68,17 +68,6 @@ class Pedestrian(RoadParticipant):
     velocity: float = 1.4
 
 
-@dataclass(frozen=True)
-class CarArrival:
-    time: float
-    direction: Direction
-
-    def __post_init__(self):
-        validate_number("Время появления", self.time, allow_zero=True)
-        if not isinstance(self.direction, Direction):
-            raise ValueError("Направление должно быть константой Direction")
-
-
 @dataclass
 class CorridorParticipant(RoadParticipant):
     direction: Direction | None = None

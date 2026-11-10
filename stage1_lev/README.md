@@ -43,12 +43,12 @@ stage1_lev/
 │   ├── exercise06a.py        # A → B → C, независимые светофоры
 │   └── exercise07.py         # Три направления и согласованные светофоры
 ├── common/
-│   ├── data.py              # Участники, Direction и CarArrival
+│   ├── data.py              # Участники и Direction
 │   ├── monitoring.py        # Журналы, посещения, занятость и статистика
 │   ├── flows.py             # Экспоненциальные интервалы, расписания и источники
 │   ├── signals.py           # Контроллеры фаз и проверка допуска
-│   ├── roads.py             # SegmentConfig, IntersectionConfig и общий RoadSegment
-│   ├── corridor.py          # Перекрёстки и движение по графу дорог
+│   ├── roads.py             # Конфигурации, CarArrival, RoadSegment и Intersection
+│   ├── road_network.py      # RoadNetwork: сборка сети и управление симуляцией
 │   └── reporting.py         # Вывод в консоль, CSV и JSON
 ├── experiments.py           # График для задания 4
 └── tests/
@@ -61,8 +61,9 @@ stage1_lev/
 Чтобы разобраться в задании, начните с соответствующего файла в `exercises`.
 Упрощённая линейная модель заданий 6 и 6а находится в `exercise06a.py`:
 там объявлены местный `RoadSegment`, `RoadNetwork` и общая функция `simulate`.
-В задании 7 используются `RoadSegment` из `common/roads.py` и `Intersection`
-из `common/corridor.py`. Настройки конкретной сети и её запуск находятся
+В задании 7 используются `RoadSegment`, `Intersection` и конфигурации из
+`common/roads.py`; общая модель сети `RoadNetwork` находится в
+`common/road_network.py`. Настройки конкретной сети и её запуск находятся
 в `exercise07.py`. `common` не зависит от модулей упражнений.
 Каталоги окружения, кэша и сгенерированных результатов исключены из Git.
 
@@ -72,6 +73,11 @@ stage1_lev/
 `car_rate=360` автомобилей в час и `pedestrian_rate=180` пешеходов в час.
 Первое появление, как и последующие, происходит после случайного
 экспоненциального интервала. Нулевая интенсивность отключает поток.
+
+Во всех упражнениях с входными потоками моменты появления задаёт общий
+`source()` из `common/flows.py`. В упражнении остаётся создание участника
+и запуск его движения. Вспомогательная функция `_arrival_clock()` используется
+только внутри `flows.py`.
 
 `horizon` ограничивает появление новых участников. После него модель
 дожидается выхода уже созданных участников. Пустая очередь между появлениями
@@ -363,7 +369,8 @@ result = exercise07.run(
 display(result, show_log=True)
 ```
 
-`CarArrival` требует константу `Direction.STRAIGHT`, `Direction.LEFT` или
+`CarArrival` расположен в `common/roads.py` рядом с `IntersectionConfig`
+и требует константу `Direction.STRAIGHT`, `Direction.LEFT` или
 `Direction.RIGHT`; преобразования строк в конструкторе нет. `__post_init__`
 проверяет время появления и тип направления. Пешеход в 1 с
 переходит в 48–53 с, пришедший ровно в 48 с — в 108–113 с.
