@@ -6,7 +6,7 @@ from dataclasses import fields
 from enum import Enum
 from pathlib import Path
 
-from .data import Event
+from .monitoring import Event
 
 
 def display(result, show_log=False):

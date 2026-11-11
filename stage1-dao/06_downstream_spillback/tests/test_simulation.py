@@ -39,18 +39,44 @@ class DownstreamSpillbackTests(unittest.TestCase):
         self.assertEqual(result.finished_at, 142)
         self.assertEqual(result.count_finished(), 2)
 
-    def test_capacity_release_rechecks_vehicle_phase(self):
-        for downstream_length, expected_start in ((255, 19), (270, 30)):
+    def test_capacity_release_rechecks_vehicle_phase_and_remaining_green(self):
+        # Две машины делят одно место за переходом. Первая въезжает в t=0,
+        # тратит 2 с на переход и downstream_length / 15 с на участок после него.
+        # Вторая должна после освобождения места снова проверить светофор:
+        # t=18 — хватает ровно 2 с; t=19 — зелёный ещё есть, но времени мало;
+        # t=20 — уже пешеходная фаза. В двух последних случаях ждём t=30.
+        for downstream_length, expected_start in ((240, 18), (255, 30), (270, 30)):
             with self.subTest(downstream_length=downstream_length):
                 simulation, result = run_simulation(
-                    car_arrivals=[0, 0], pedestrian_arrivals=[], is_car_at_stop_line=True,
+                    car_arrivals=[0, 0], pedestrian_arrivals=[1], is_car_at_stop_line=True,
                     downstream_capacity_count=1, downstream_length=downstream_length,
                 )
                 self.assertEqual(cars(result)[1].crossing_started_at, expected_start)
                 self.assertEqual(cars(result)[1].crossing_finished_at, expected_start + 2)
                 self.assertEqual(result.count(Kind.CAR), 2)
-                self.assertEqual(result.count_finished(), 2)
+                self.assertEqual(result.count_finished(), 3)
                 self.assertEqual(simulation.free_places_at_end_count, 1)
+                pedestrian = pedestrians(result)[0]
+                self.assertEqual(pedestrian.crossing_started_at, 20)
+                for car in cars(result):
+                    self.assertTrue(
+                        car.crossing_finished_at <= pedestrian.crossing_started_at
+                        or pedestrian.crossing_finished_at <= car.crossing_started_at
+                    )
+
+    def test_arrival_rechecks_remaining_green_for_actual_crossing_duration(self):
+        for crossing_length in (30, 45):
+            duration = crossing_length / 15
+            for queue_at, expected_start in ((20 - duration, 20 - duration),
+                                             (21 - duration, 30), (20, 30)):
+                with self.subTest(crossing_length=crossing_length, queue_at=queue_at):
+                    _, result = run_simulation(
+                        car_arrivals=[queue_at], pedestrian_arrivals=[1],
+                        is_car_at_stop_line=True, car_crossing_length=crossing_length,
+                    )
+                    car = cars(result)[0]
+                    self.assertEqual(car.crossing_started_at, expected_start)
+                    self.assertEqual(car.crossing_finished_at, expected_start + duration)
 
     def test_empty_input_finishes_immediately(self):
         simulation, result = run_simulation(car_arrivals=[], pedestrian_arrivals=[])

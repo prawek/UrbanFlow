@@ -4,7 +4,8 @@ from itertools import cycle
 
 import simpy
 
-from ..common.data import Result, validate_number
+from ..common.monitoring import Result
+from ..common.data import validate_number
 
 
 def traffic_light(env, green_duration, yellow_duration, red_duration, *, journal=None):

@@ -2,7 +2,8 @@
 
 import simpy
 
-from ..common.data import Participant, Result, validate_number
+from ..common.monitoring import Result
+from ..common.data import Participant, validate_number
 
 
 def move(env, participant, distance, speed, journal):

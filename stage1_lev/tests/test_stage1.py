@@ -12,7 +12,7 @@ from tempfile import TemporaryDirectory
 import simpy
 
 from stage1_lev.exercises import exercise01, exercise02, exercise03
-from stage1_lev.common.data import Result
+from stage1_lev.common.monitoring import Result
 from stage1_lev.common.reporting import export
 
 

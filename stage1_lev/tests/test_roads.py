@@ -9,7 +9,8 @@ from tempfile import TemporaryDirectory
 
 from stage1_lev.exercises import exercise06, exercise06a
 from stage1_lev.common.reporting import export
-from stage1_lev.common.roads import SegmentConfig, simulate
+from stage1_lev.common.roads import SegmentConfig
+from stage1_lev.exercises.exercise06a import simulate
 
 
 def cars(result):
@@ -256,6 +257,11 @@ class SequentialSegmentsTests(RoadRulesMixin, unittest.TestCase):
         late = exercise06a.run(car_arrivals=[599], pedestrian_arrivals={"C": [599]})
         self.assertGreater(late.finished_at, 600)
         self.assert_complete_and_safe(late, exercise06a.SEGMENTS)
+
+    def test_explicit_schedules_can_extend_beyond_random_generation_horizon(self):
+        result = exercise06a.run(horizon=10, car_arrivals=[100], pedestrian_arrivals={"C": [100]})
+        self.assertEqual(sorted(p.appeared_at for p in result.participants), [100, 100])
+        self.assert_complete_and_safe(result, exercise06a.SEGMENTS)
 
     def test_observation_does_not_truncate_participants(self):
         result = exercise06a.run(car_arrivals=[0], pedestrian_arrivals={}, observe_until=1)

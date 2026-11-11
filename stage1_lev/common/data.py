@@ -1,6 +1,7 @@
-"""Записи результатов"""
+"""Участники движения, направления и входные расписания."""
 
 from dataclasses import dataclass, field
+from enum import Enum
 from math import isfinite
 
 
@@ -10,12 +11,10 @@ def validate_number(name: str, value: float, *, allow_zero: bool = False) -> Non
         raise ValueError(f"{name} должно быть конечным {bound} числом")
 
 
-@dataclass(frozen=True)
-class Event:
-    time: float
-    actor: str
-    kind: str
-    action: str
+class Direction(str, Enum):
+    STRAIGHT = "straight"
+    LEFT = "left"
+    RIGHT = "right"
 
 
 @dataclass
@@ -33,38 +32,6 @@ class Participant:
 
 
 @dataclass
-class Result:
-    exercise: int | str
-    seed: int | None = None
-    events: list[Event] = field(default_factory=list)
-    participants: list[Participant] = field(default_factory=list)
-    finished_at: float = 0.0
-
-    @property
-    def participant_type(self):
-        return Participant
-
-    def record(self, time: float, actor: str, kind: str, action: str) -> None:
-        self.events.append(Event(float(time), actor, kind, action))
-
-    def extra_tables(self):
-        return ()
-
-    def summary(self) -> dict:
-        counts = {}
-        for kind in ("car", "pedestrian"):
-            members = [p for p in self.participants if p.kind == kind]
-            counts[kind] = {
-                "created": len(members),
-                "arrived": sum(p.arrived_at is not None for p in members),
-            }
-        return {
-            "exercise": self.exercise, "seed": self.seed,
-            "finished_at": self.finished_at, "event_count": len(self.events), **counts,
-        }
-
-
-@dataclass
 class CrossingParticipant(Participant):
     velocity: float = 0.0
     queue_entered_at: float | None = None
@@ -78,30 +45,45 @@ class CrossingParticipant(Participant):
 
 
 @dataclass
-class Vehicle(CrossingParticipant):
+class RoadParticipant(CrossingParticipant):
+    current_segment: object | None = field(default=None, repr=False, compare=False,
+                                          metadata={"export": False})
+    # Место появления местного пешехода; сохраняется после выхода из модели.
+    local_segment: str = ""
+    queue_wait_total: float = 0.0
+
+    @property
+    def queue_wait(self):
+        """Сумма ожиданий на маршруте для CrossingResult.summary()."""
+        return self.queue_wait_total if self.arrived_at is not None else None
+
+
+@dataclass
+class Vehicle(RoadParticipant):
     velocity: float = 15.0
 
 
 @dataclass
-class Pedestrian(CrossingParticipant):
+class Pedestrian(RoadParticipant):
     velocity: float = 1.4
 
 
-@dataclass
-class CrossingResult(Result):
-    @property
-    def participant_type(self):
-        return CrossingParticipant
+@dataclass(frozen=True)
+class CarArrival:
+    time: float
+    direction: Direction
 
-    def summary(self) -> dict:
-        summary = super().summary()
-        for kind in ("car", "pedestrian"):
-            finished = [p for p in self.participants
-                        if p.kind == kind and p.arrived_at is not None]
-            summary[kind]["mean_travel_time"] = (
-                sum(p.travel_time for p in finished) / len(finished) if finished else None
-            )
-            summary[kind]["mean_queue_wait"] = (
-                sum(p.queue_wait for p in finished) / len(finished) if finished else None
-            )
-        return summary
+    def __post_init__(self):
+        validate_number("Время появления", self.time, allow_zero=True)
+        if not isinstance(self.direction, Direction):
+            raise ValueError("Направление должно быть константой Direction")
+
+
+@dataclass
+class CorridorParticipant(RoadParticipant):
+    direction: Direction | None = None
+    # Первый поворот нужен для статистики потока; direction меняется на маршруте.
+    entry_direction: Direction | None = None
+    is_initial: bool = False
+    reserved_segment: object | None = field(default=None, repr=False, compare=False,
+                                           metadata={"export": False})

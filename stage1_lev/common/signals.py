@@ -42,7 +42,7 @@ class PhaseController:
                 yield self.env.timeout(duration)
 
 
-class Signal(PhaseController):
+class BiPhaseController(PhaseController):
     """Двухфазный светофор заданий 4, 6 и 6а"""
 
     def __init__(self, env, result, green_duration=20, red_duration=10,

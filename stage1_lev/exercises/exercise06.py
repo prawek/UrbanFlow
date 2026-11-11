@@ -1,6 +1,7 @@
 """Задание 6: заполненный участок B останавливает выпуск с A"""
 
-from ..common.roads import SegmentConfig, simulate
+from ..common.roads import SegmentConfig
+from .exercise06a import simulate
 
 
 SEGMENTS = (
