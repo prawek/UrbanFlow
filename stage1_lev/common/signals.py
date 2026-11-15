@@ -56,3 +56,24 @@ class BiPhaseController(PhaseController):
         if self.phase != "car":
             return 0.0
         return max(0.0, self.phase_ends_at - self.env.now)
+
+
+class SignalController(PhaseController):
+    """Местный светофор с произвольной начальной фазой и её остатком."""
+
+    def __init__(self, env, result, config):
+        super().__init__(env, result, f"traffic_light:{config.name}", config.phases)
+        self.initial_phase = config.initial_phase
+        self.initial_elapsed = config.initial_elapsed
+        phase, duration = self.phases[self.initial_phase]
+        self.phase = phase
+        self.phase_ends_at = float(env.now) + duration - self.initial_elapsed
+
+    def run(self):
+        index = self.initial_phase
+        remaining = self.phases[index][1] - self.initial_elapsed
+        while True:
+            self.switch(self.phases[index][0], remaining)
+            yield self.env.timeout(remaining)
+            index = (index + 1) % len(self.phases)
+            remaining = self.phases[index][1]

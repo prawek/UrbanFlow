@@ -1,9 +1,11 @@
 """Случайные появления участников и проверка заданных расписаний"""
 
-from .data import CarArrival, validate_number
+from .data import validate_number
+from .roads import CarArrival
+from .network_config import RouteArrival
 
 
-def arrival_clock(env, rate_per_hour, horizon, rng):
+def _arrival_clock(env, rate_per_hour, horizon, rng):
     """Планирует пуассоновский поток с интенсивностью rate_per_hour участников в час.
 
     Каждая пара содержит SimPy timeout и флаг: создавать ли участника после
@@ -35,20 +37,18 @@ def source(env, rate, horizon, rng, arrivals, *, spawn):
     """Вызывает spawn для каждого появления, не ожидая завершения его поездки.
 
     Расписание содержит времена или CarArrival; spawn получает запись расписания.
-    При arrivals=None моменты выбирает arrival_clock, а spawn получает None.
+    При arrivals=None моменты выбирает _arrival_clock, а spawn получает None.
     Явное расписание воспроизводится целиком; horizon ограничивает случайный поток.
     Если упражнение ограничивает и расписание, оно отбирает записи до запуска source.
     Завершение поездок ждёт сама модель.
     """
     if arrivals is None:
-        for waiting, is_arrival in arrival_clock(env, rate, horizon, rng):
+        for waiting, is_arrival in _arrival_clock(env, rate, horizon, rng):
             yield waiting
             if is_arrival:
                 spawn(None)
     else:
         for arrival in arrivals:
-            moment = arrival.time if isinstance(arrival, CarArrival) else arrival
+            moment = arrival.time if isinstance(arrival, (CarArrival, RouteArrival)) else arrival
             yield env.timeout(moment - env.now)
             spawn(arrival)
-
-

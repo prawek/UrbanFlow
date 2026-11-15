@@ -17,6 +17,15 @@ class Direction(str, Enum):
     RIGHT = "right"
 
 
+class Route(str, Enum):
+    S1_STRAIGHT = "S1_straight"
+    S1_LEFT = "S1_left"
+    S2_TO_I3 = "S2_to_I3"
+    S3_TO_I3 = "S3_to_I3"
+    S3_TO_I1 = "S3_to_I1"
+    S4_TO_EXIT = "S4_to_exit"
+
+
 @dataclass
 class Participant:
     id: str
@@ -68,17 +77,6 @@ class Pedestrian(RoadParticipant):
     velocity: float = 1.4
 
 
-@dataclass(frozen=True)
-class CarArrival:
-    time: float
-    direction: Direction
-
-    def __post_init__(self):
-        validate_number("Время появления", self.time, allow_zero=True)
-        if not isinstance(self.direction, Direction):
-            raise ValueError("Направление должно быть константой Direction")
-
-
 @dataclass
 class CorridorParticipant(RoadParticipant):
     direction: Direction | None = None
@@ -87,3 +85,28 @@ class CorridorParticipant(RoadParticipant):
     is_initial: bool = False
     reserved_segment: object | None = field(default=None, repr=False, compare=False,
                                            metadata={"export": False})
+
+
+@dataclass
+class NetworkVehicle(RoadParticipant):
+    source: str = ""
+    route: Route | None = None
+    admitted_at: float | None = None
+    exit: str = ""
+    free_flow_time: float = 0.0
+    reserved_segment: object | None = field(default=None, repr=False, compare=False,
+                                           metadata={"export": False})
+    path: tuple = field(default=(), repr=False, compare=False, metadata={"export": False})
+    path_index: int = field(default=0, metadata={"export": False})
+
+    @property
+    def next_segment(self):
+        return self.path[self.path_index + 1] if self.path_index + 1 < len(self.path) else None
+
+    @property
+    def external_wait(self):
+        return self.admitted_at - self.appeared_at if self.admitted_at is not None else None
+
+    @property
+    def delay(self):
+        return self.travel_time - self.free_flow_time if self.arrived_at is not None else None

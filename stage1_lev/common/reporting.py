@@ -25,6 +25,14 @@ def display(result, show_log=False):
     for direction, counts in summary.get("directions", {}).items():
         print(f"{direction}: generated={counts['generated']}, initial={counts['initial']}, "
               f"arrived={counts['arrived']}")
+    for source, counts in summary.get("sources", {}).items():
+        print(f"{source}: created={counts['created']}, arrived={counts['arrived']}")
+        if counts["mean_travel_time"] is not None:
+            print(f"  mean_travel_time={counts['mean_travel_time']:.6f} s, "
+                  f"mean_delay={counts['mean_delay']:.6f} s, "
+                  f"mean_external_wait={counts['mean_external_wait']:.6f} s")
+    if "sources" in summary:
+        print("Parameters: " + json.dumps(summary["parameters"], ensure_ascii=False))
 
 
 def write_csv(path, record_type, rows):

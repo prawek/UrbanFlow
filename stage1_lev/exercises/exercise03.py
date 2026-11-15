@@ -4,37 +4,39 @@ from random import Random
 
 import simpy
 
-from ..common.monitoring import Result
 from ..common.data import Participant, validate_number
+from ..common.flows import source
+from ..common.monitoring import Result
 from .exercise02 import move
-from ..common.flows import arrival_clock
 
 
 def car_source(env, result, rate_per_hour, horizon, rng, distance, speed):
     number = 0
-    for waiting, is_arrival in arrival_clock(env, rate_per_hour, horizon, rng):
-        yield waiting
-        if is_arrival:
-            number += 1
-            car = Participant(f"car-{number}", "car", float(env.now))
-            result.participants.append(car)
-            result.record(env.now, car.id, car.kind, "appeared")
-            # Запускаем поездку отдельно. yield env.process(...) заставил бы источник
-            # ждать её завершения перед выбором следующего интервала
-            env.process(move(env, car, distance, speed, result))
+
+    def spawn(_):
+        nonlocal number
+        number += 1
+        car = Participant(f"car-{number}", "car", float(env.now))
+        result.participants.append(car)
+        result.record(env.now, car.id, car.kind, "appeared")
+        env.process(move(env, car, distance, speed, result))
+
+    return source(env, rate_per_hour, horizon, rng, None, spawn=spawn)
 
 
 def pedestrian_source(env, result, rate_per_hour, horizon, rng):
     number = 0
-    for waiting, is_arrival in arrival_clock(env, rate_per_hour, horizon, rng):
-        yield waiting
-        if is_arrival:
-            number += 1
-            now = float(env.now)
-            pedestrian = Participant(f"pedestrian-{number}", "pedestrian", now, now)
-            result.participants.append(pedestrian)
-            result.record(now, pedestrian.id, pedestrian.kind, "appeared")
-            result.record(now, pedestrian.id, pedestrian.kind, "arrived")
+
+    def spawn(_):
+        nonlocal number
+        number += 1
+        now = float(env.now)
+        pedestrian = Participant(f"pedestrian-{number}", "pedestrian", now, now)
+        result.participants.append(pedestrian)
+        result.record(now, pedestrian.id, pedestrian.kind, "appeared")
+        result.record(now, pedestrian.id, pedestrian.kind, "arrived")
+
+    return source(env, rate_per_hour, horizon, rng, None, spawn=spawn)
 
 
 def run(seed=42, *, horizon=600, car_rate=360, pedestrian_rate=180,
